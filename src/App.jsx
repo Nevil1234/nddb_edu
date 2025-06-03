@@ -13,7 +13,6 @@ import Navbar from "./components/Navbar";
 import Sidebar from "./components/Sidebar";
 import Footer from "./components/Footer";
 import PrivateRoute from './components/PrivateRoute';
-import Login from "./pages/Login";
 // Course routes
 import AllCourses from './pages/courses/AllCourses';
 import AddCourses from './pages/courses/AddCourses';
