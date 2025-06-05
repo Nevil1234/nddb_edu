@@ -7,14 +7,22 @@ import {
 import {
   Send, AdminPanelSettings
 } from '@mui/icons-material';
-
-// Simplified import of AuthContext
-import { AuthContext } from '../contexts/AuthContext';
+// Import the auth context
+let AuthContext;
+try {
+  AuthContext = require('../contexts/AuthContext').AuthContext;
+} catch (error) {
+  console.error("AuthContext not found, using mock context");
+  AuthContext = React.createContext({
+    currentUser: { id: 'mock-user', role: 'admin', name: 'Mock User' },
+    isAuthenticated: true
+  });
+}
 
 const DiscussionForum = ({ courseId }) => {
   console.log("DiscussionForum rendering, courseId:", courseId);
   
-  // Use a default value if context is not available
+  // Use context with fallback
   const auth = useContext(AuthContext) || { 
     currentUser: { id: 'mock-user', role: 'admin', name: 'Mock User' },
     isAuthenticated: true
@@ -184,9 +192,9 @@ const DiscussionForum = ({ courseId }) => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  // Determine if a message is from the current user
-  const isCurrentUser = (senderId) => {
-    return isAuthenticated && senderId === currentUser.id;
+  // Determine if a message is from an admin
+  const isAdminMessage = (senderRole) => {
+    return senderRole === 'admin';
   };
 
   // If user is not authenticated, show a message
@@ -217,11 +225,11 @@ const DiscussionForum = ({ courseId }) => {
                 key={message._id}
                 sx={{
                   display: 'flex',
-                  justifyContent: isCurrentUser(message.senderId) ? 'flex-end' : 'flex-start',
+                  justifyContent: isAdminMessage(message.senderRole) ? 'flex-end' : 'flex-start',
                   width: '100%',
                 }}
               >
-                {!isCurrentUser(message.senderId) && (
+                {!isAdminMessage(message.senderRole) && (
                   <Avatar 
                     sx={{ 
                       bgcolor: message.senderRole === 'admin' ? 'primary.main' : 'secondary.main',
@@ -238,8 +246,8 @@ const DiscussionForum = ({ courseId }) => {
                     maxWidth: '70%',
                     p: 2,
                     borderRadius: 2,
-                    bgcolor: isCurrentUser(message.senderId) ? 'primary.main' : 'grey.100',
-                    color: isCurrentUser(message.senderId) ? 'white' : 'text.primary',
+                    bgcolor: isAdminMessage(message.senderRole) ? 'primary.main' : 'grey.100',
+                    color: isAdminMessage(message.senderRole) ? 'white' : 'text.primary',
                     opacity: message.pending ? 0.7 : 1,
                   }}
                 >
@@ -264,7 +272,7 @@ const DiscussionForum = ({ courseId }) => {
                   <Typography variant="body1">{message.message}</Typography>
                   <Typography 
                     variant="caption" 
-                    color={isCurrentUser(message.senderId) ? 'rgba(255,255,255,0.7)' : 'text.secondary'}
+                    color={isAdminMessage(message.senderRole) ? 'rgba(255,255,255,0.7)' : 'text.secondary'}
                     sx={{ display: 'block', textAlign: 'right', mt: 1 }}
                   >
                     {formatMessageTime(message.timestamp)}
@@ -272,7 +280,7 @@ const DiscussionForum = ({ courseId }) => {
                   </Typography>
                 </Box>
                 
-                {isCurrentUser(message.senderId) && (
+                {isAdminMessage(message.senderRole) && (
                   <Avatar 
                     sx={{ 
                       bgcolor: 'primary.main',
@@ -300,11 +308,11 @@ const DiscussionForum = ({ courseId }) => {
         <Typography variant="h6" component="h2">
           Course Discussion
         </Typography>
-        <Chip 
+        {/* <Chip 
           label={`${messages.length} messages`} 
           color="primary" 
           size="small" 
-        />
+        /> */}
       </Paper>
 
       {/* Messages Container */}
@@ -340,11 +348,11 @@ const DiscussionForum = ({ courseId }) => {
               key={message._id}
               sx={{
                 display: 'flex',
-                justifyContent: isCurrentUser(message.senderId) ? 'flex-end' : 'flex-start',
+                justifyContent: isAdminMessage(message.senderRole) ? 'flex-end' : 'flex-start',
                 width: '100%',
               }}
             >
-              {!isCurrentUser(message.senderId) && (
+              {!isAdminMessage(message.senderRole) && (
                 <Avatar 
                   sx={{ 
                     bgcolor: message.senderRole === 'admin' ? 'primary.main' : 'secondary.main',
@@ -361,8 +369,8 @@ const DiscussionForum = ({ courseId }) => {
                   maxWidth: '70%',
                   p: 2,
                   borderRadius: 2,
-                  bgcolor: isCurrentUser(message.senderId) ? 'primary.main' : 'grey.100',
-                  color: isCurrentUser(message.senderId) ? 'white' : 'text.primary',
+                  bgcolor: isAdminMessage(message.senderRole) ? 'primary.main' : 'grey.100',
+                  color: isAdminMessage(message.senderRole) ? 'white' : 'text.primary',
                   opacity: message.pending ? 0.7 : 1,
                 }}
               >
@@ -387,7 +395,7 @@ const DiscussionForum = ({ courseId }) => {
                 <Typography variant="body1">{message.message}</Typography>
                 <Typography 
                   variant="caption" 
-                  color={isCurrentUser(message.senderId) ? 'rgba(255,255,255,0.7)' : 'text.secondary'}
+                  color={isAdminMessage(message.senderRole) ? 'rgba(255,255,255,0.7)' : 'text.secondary'}
                   sx={{ display: 'block', textAlign: 'right', mt: 1 }}
                 >
                   {formatMessageTime(message.timestamp)}
@@ -395,7 +403,7 @@ const DiscussionForum = ({ courseId }) => {
                 </Typography>
               </Box>
               
-              {isCurrentUser(message.senderId) && (
+              {isAdminMessage(message.senderRole) && (
                 <Avatar 
                   sx={{ 
                     bgcolor: 'primary.main',

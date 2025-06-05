@@ -7,13 +7,13 @@ import {
   ListItemText, Chip, Tabs, Tab, Avatar, useTheme, useMediaQuery,
   Alert, Breadcrumbs, Link, Paper, Collapse, IconButton, Dialog,
   DialogActions, DialogContent, DialogContentText, DialogTitle,
-  Fade, Zoom
+  Fade, Zoom, TextField, Modal
 } from '@mui/material';
 import {
   PlayCircleOutline, CheckCircle, PeopleAlt, QuestionAnswer,
   ArrowBack, School, Description, Videocam, Assignment, 
   CalendarToday, Update, KeyboardArrowDown, KeyboardArrowUp,
-  Chat, Edit, Delete
+  Chat, Edit, Delete, Add, Close, Visibility
 } from '@mui/icons-material';
 
 // Import the new DiscussionForum component
@@ -34,6 +34,21 @@ const CourseDetails = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [quizToDelete, setQuizToDelete] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  
+  // New states for module management
+  const [moduleModalOpen, setModuleModalOpen] = useState(false);
+  const [moduleToEdit, setModuleToEdit] = useState(null);
+  const [moduleFormData, setModuleFormData] = useState({
+    title: '',
+    description: '',
+    contentFile: null
+  });
+  const [moduleSubmitting, setModuleSubmitting] = useState(false);
+  const [moduleError, setModuleError] = useState(null);
+  
+  // Add new state for content modal
+  const [contentModalOpen, setContentModalOpen] = useState(false);
+  const [selectedContent, setSelectedContent] = useState(null);
   
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -92,15 +107,6 @@ const CourseDetails = () => {
     }
   };
 
-  // Fetch quiz details when the Quizzes tab is selected
-  useEffect(() => {
-    if (selectedTabIndex === 1 && courseDetail?.quizzes?.length > 0) {
-      courseDetail.quizzes.forEach(quiz => {
-        fetchQuizDetails(quiz._id);
-      });
-    }
-  }, [selectedTabIndex, courseDetail]);
-
   const toggleQuestion = (questionId) => {
     setExpandedQuestions(prev => ({
       ...prev,
@@ -136,6 +142,197 @@ const CourseDetails = () => {
   // Handle edit quiz (redirect to edit page)
   const handleEditQuiz = (quiz) => {
     navigate(`/courses/${courseId}/edit-quiz/${quiz._id}`);
+  };
+
+  // Reset module form
+  const resetModuleForm = () => {
+    setModuleFormData({
+      title: '',
+      description: '',
+      contentFile: null
+    });
+    setModuleToEdit(null);
+    setModuleError(null);
+  };
+
+  // Handle module modal open
+  const handleOpenModuleModal = (module = null) => {
+    if (module) {
+      // If editing existing module
+      setModuleToEdit(module);
+      setModuleFormData({
+        title: module.title,
+        description: module.description,
+        contentFile: null // We don't populate the file input when editing
+      });
+    } else {
+      // If creating new module
+      resetModuleForm();
+    }
+    setModuleModalOpen(true);
+  };
+
+  // Handle module modal close
+  const handleCloseModuleModal = () => {
+    setModuleModalOpen(false);
+    resetModuleForm();
+  };
+
+  // Handle module form input changes
+  const handleModuleFormChange = (e) => {
+    const { name, value } = e.target;
+    setModuleFormData({
+      ...moduleFormData,
+      [name]: value
+    });
+  };
+
+  // Handle module file input changes
+  const handleModuleFileChange = (e) => {
+    setModuleFormData({
+      ...moduleFormData,
+      contentFile: e.target.files[0]
+    });
+  };
+
+  // Handle module form submission
+  const handleModuleSubmit = async (e) => {
+    e.preventDefault();
+    setModuleSubmitting(true);
+    setModuleError(null);
+    
+    try {
+      const formData = new FormData();
+      formData.append('courseId', courseId);
+      formData.append('title', moduleFormData.title);
+      formData.append('description', moduleFormData.description);
+      
+      if (moduleFormData.contentFile) {
+        formData.append('contentFile', moduleFormData.contentFile);
+      }
+      
+      let response;
+      
+      if (moduleToEdit) {
+        // Update existing module
+        response = await axios.put(
+          `https://nddb-lms.onrender.com/api/modules/${moduleToEdit._id}`,
+          formData,
+          {
+            headers: {
+              'Content-Type': 'multipart/form-data'
+            }
+          }
+        );
+        
+        // Update the module in course detail
+        setCourseDetail(prev => ({
+          ...prev,
+          modules: prev.modules.map(mod => 
+            mod._id === moduleToEdit._id 
+              ? { 
+                  ...mod, 
+                  title: moduleFormData.title, 
+                  description: moduleFormData.description,
+                  ...(response.data.data?.content && { content: response.data.data.content })
+                } 
+              : mod
+          )
+        }));
+      } else {
+        // Create new module
+        response = await axios.post(
+          'https://nddb-lms.onrender.com/api/modules',
+          formData,
+          {
+            headers: {
+              'Content-Type': 'multipart/form-data'
+            }
+          }
+        );
+        
+        // Add the new module to course detail
+        if (response.data.data) {
+          setCourseDetail(prev => ({
+            ...prev,
+            modules: [...(prev.modules || []), response.data.data]
+          }));
+        }
+      }
+      
+      // Close modal and reset form
+      setModuleModalOpen(false);
+      resetModuleForm();
+      setModuleSubmitting(false);
+      
+      // Show success message or update UI as needed
+      
+    } catch (err) {
+      console.error('Error submitting module:', err);
+      setModuleError(err.response?.data?.message || 'Failed to save module. Please try again.');
+      setModuleSubmitting(false);
+    }
+  };
+
+  // Function to determine content type from file extension
+  const getContentTypeFromPath = (filePath) => {
+    if (!filePath) return null;
+    
+    const extension = filePath.split('.').pop().toLowerCase();
+    
+    const typeMap = {
+      // Images
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'png': 'image/png',
+      'gif': 'image/gif',
+      'webp': 'image/webp',
+      // Videos
+      'mp4': 'video/mp4',
+      'webm': 'video/webm',
+      'ogg': 'video/ogg',
+      'mov': 'video/quicktime',
+      // Audio
+      'mp3': 'audio/mpeg',
+      'wav': 'audio/wav',
+      // Documents
+      'pdf': 'application/pdf',
+      'doc': 'application/msword',
+      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'xls': 'application/vnd.ms-excel',
+      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'ppt': 'application/vnd.ms-powerpoint',
+      'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      // Text
+      'txt': 'text/plain',
+      'csv': 'text/csv',
+      'html': 'text/html',
+    };
+    
+    return typeMap[extension] || 'application/octet-stream'; // Default to binary file type
+  };
+
+  // Modified function to handle opening content modal with contentFile path
+  const handleOpenContentModal = (module) => {
+    if (!module || !module.contentFile) return;
+    
+    const contentType = getContentTypeFromPath(module.contentFile);
+    const contentUrl = `https://nddb-lms.onrender.com${module.contentFile}`;
+    
+    setSelectedContent({
+      type: contentType,
+      url: contentUrl,
+      title: module.title
+    });
+    
+    setContentModalOpen(true);
+  };
+  
+  
+  // Add function to handle closing content modal
+  const handleCloseContentModal = () => {
+    setContentModalOpen(false);
+    setSelectedContent(null);
   };
 
   if (loading) {
@@ -431,105 +628,100 @@ const CourseDetails = () => {
         <Box sx={{ p: 3 }}>
           {/* Modules Tab */}
           {selectedTabIndex === 0 && (
-            <List disablePadding>
-              {courseDetail.modules?.length > 0 ? (
-                courseDetail.modules.map((module, index) => (
-                  <React.Fragment key={module._id}>
-                    {index > 0 && <Divider variant="inset" component="li" />}
-                    <ListItem 
-                      sx={{
-                        py: 2,
-                        borderRadius: 1,
-                        alignItems: 'flex-start',
-                        '&:hover': { bgcolor: 'action.hover' },
-                        flexDirection: 'column',
-                        gap: 1.5,
-                      }}
-                    >
-                      <Box sx={{ display: 'flex', width: '100%' }}>
-                        <ListItemIcon sx={{ mt: 0.5 }}>
-                          <PlayCircleOutline color="primary" />
-                        </ListItemIcon>
-                        <ListItemText 
-                          primary={module.title} 
-                          secondary={
-                            <>
-                              <Typography component="span" variant="body2" color="text.primary">
-                                {module.description}
-                              </Typography>
-                              <br />
-                              <Typography component="span" variant="caption" color="text.secondary">
-                                Added on {formatDate(module.createdAt)}
-                              </Typography>
-                            </>
-                          }
-                        />
-                        {courseDetail.progress?.some(p => p.moduleId === module._id && p.completed === "true") && (
-                          <Chip 
-                            icon={<CheckCircle />} 
-                            label="Completed" 
-                            size="small" 
-                            color="success" 
-                            sx={{ ml: 2 }}
-                          />
-                        )}
-                      </Box>
-                      {/* Module Content Preview */}
-                      {module.content && (
-                        <Box sx={{ width: '100%', mt: 1 }}>
-                          {/* Image */}
-                          {module.content.type?.startsWith('image/') && (
-                            <Box sx={{ maxWidth: 320, maxHeight: 180, borderRadius: 2, overflow: 'hidden', boxShadow: 1 }}>
-                              <img
-                                src={module.content.url}
-                                alt={module.title}
-                                style={{ width: '100%', height: 'auto', display: 'block' }}
-                              />
-                            </Box>
-                          )}
-                          {/* Video */}
-                          {module.content.type?.startsWith('video/') && (
-                            <Box sx={{ maxWidth: 400, maxHeight: 225, borderRadius: 2, overflow: 'hidden', boxShadow: 1 }}>
-                              <video
-                                src={module.content.url}
-                                controls
-                                style={{ width: '100%', height: 'auto', display: 'block', background: '#000' }}
-                              >
-                                Your browser does not support the video tag.
-                              </video>
-                            </Box>
-                          )}
-                          {/* Audio */}
-                          {module.content.type?.startsWith('audio/') && (
-                            <Box sx={{ maxWidth: 400, mt: 1 }}>
-                              <audio
-                                src={module.content.url}
-                                controls
-                                style={{ width: '100%' }}
-                              >
-                                Your browser does not support the audio element.
-                              </audio>
-                            </Box>
-                          )}
-                          {/* Fallback for other types */}
-                          {!['image/', 'video/', 'audio/'].some(t => module.content.type?.startsWith(t)) && (
-                            <Typography variant="body2" color="text.secondary">
-                              <a href={module.content.url} target="_blank" rel="noopener noreferrer">
-                                View Content
-                              </a>
-                            </Typography>
-                          )}
-                        </Box>
-                      )}
-                    </ListItem>
-                  </React.Fragment>
-                ))
-              ) : (
-                <Typography variant="body1" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
-                  No modules available for this course yet.
+            <>
+              {/* Add Module Button */}
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3, alignItems: 'center' }}>
+                <Typography variant="h6" component="h2" sx={{ fontWeight: 600 }}>
+                  Course Modules
                 </Typography>
-              )}
-            </List>
+                <Button 
+                  variant="contained" 
+                  color="primary"
+                  startIcon={<Add />}
+                  onClick={() => handleOpenModuleModal()}
+                  sx={{
+                    background: 'linear-gradient(45deg, #1976d2, #42a5f5)',
+                    borderRadius: 2,
+                    boxShadow: 2,
+                    '&:hover': {
+                      background: 'linear-gradient(45deg, #1565c0, #1976d2)',
+                    }
+                  }}
+                >
+                  Create New Module
+                </Button>
+              </Box>
+
+              {/* Modules List */}
+              <List disablePadding>
+                {courseDetail.modules?.length > 0 ? (
+                  courseDetail.modules.map((module, index) => (
+                    <React.Fragment key={module._id}>
+                      {index > 0 && <Divider variant="inset" component="li" />}
+                      <ListItem 
+                        sx={{
+                          py: 2,
+                          borderRadius: 1,
+                          alignItems: 'flex-start',
+                          '&:hover': { bgcolor: 'action.hover' },
+                          flexDirection: 'column',
+                          gap: 1.5,
+                        }}
+                      >
+                        <Box sx={{ display: 'flex', width: '100%', justifyContent: 'space-between' }}>
+                          <Box sx={{ display: 'flex' }}>
+                            <ListItemIcon sx={{ mt: 0.5 }}>
+                              <PlayCircleOutline color="primary" />
+                            </ListItemIcon>
+                            <ListItemText 
+                              primary={module.title} 
+                              secondary={
+                                <>
+                                  <Typography component="span" variant="body2" color="text.primary">
+                                    {module.description}
+                                  </Typography>
+                                  <br />
+                                  <Typography component="span" variant="caption" color="text.secondary">
+                                    Added on {formatDate(module.createdAt)}
+                                  </Typography>
+                                </>
+                              }
+                            />
+                          </Box>
+                          <Box>
+                            
+                            {module.contentFile && (
+                              <Button
+                                variant="outlined"
+                                color="primary"
+                                size="small"
+                                startIcon={<Visibility />}
+                                onClick={() => handleOpenContentModal(module)}
+                                sx={{ mr: 1 }}
+                              >
+                                View Content
+                              </Button>
+                            )}
+                            <IconButton 
+                              onClick={() => handleOpenModuleModal(module)}
+                              color="primary"
+                              size="small"
+                              sx={{ ml: 1 }}
+                            >
+                              <Edit fontSize="small" />
+                            </IconButton>
+                          </Box>
+                        </Box>
+                      </ListItem>
+                    </React.Fragment>
+                  ))
+                ) : (
+                  <Typography variant="body1" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
+                    No modules available for this course yet. Create a new module to get started.
+                  </Typography>
+                )}
+              </List>
+            </>
           )}
 
           {/* Quizzes Tab */}
@@ -542,7 +734,7 @@ const CourseDetails = () => {
                   startIcon={<Assignment />}
                   onClick={() => navigate(`/courses/${courseId}/create-quiz`)}
                   sx={{
-                    background: 'linear-gradient(45deg, #242f8c, #42a5f5)',
+                    background: 'linear-gradient(45deg, #1976d2, #42a5f5)',
                     borderRadius: 2,
                     boxShadow: 2,
                     '&:hover': {
@@ -554,16 +746,12 @@ const CourseDetails = () => {
                 </Button>
               </Box>
               
-              {loadingQuizzes && (
-                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                  <CircularProgress size={40} />
-                </Box>
-              )}
-              
               {courseDetail.quizzes?.length > 0 ? (
                 courseDetail.quizzes.map((quizBasic, index) => {
                   // Get detailed quiz data if available
                   const quiz = detailedQuizzes[quizBasic._id] || quizBasic;
+                  const isLoaded = !!detailedQuizzes[quizBasic._id];
+                  const isExpanded = !!expandedQuestions[quizBasic._id];
                   
                   return (
                     <Paper 
@@ -593,11 +781,27 @@ const CourseDetails = () => {
                           </Typography>
                         </Box>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Chip 
+                          {/* <Chip 
                             label={`${quiz.questions?.length || 0} Questions`}
                             size="small"
                             sx={{ bgcolor: 'rgba(255,255,255,0.25)', color: 'white' }}
-                          />
+                          /> */}
+                          <IconButton 
+                            size="small"
+                            color="inherit"
+                            onClick={() => {
+                              if (!isLoaded) {
+                                fetchQuizDetails(quizBasic._id);
+                              }
+                              setExpandedQuestions(prev => ({
+                                ...prev,
+                                [quizBasic._id]: !prev[quizBasic._id]
+                              }));
+                            }}
+                            aria-label="Toggle questions"
+                          >
+                            {isExpanded ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
+                          </IconButton>
                           <IconButton 
                             size="small" 
                             onClick={() => handleEditQuiz(quiz)}
@@ -625,147 +829,165 @@ const CourseDetails = () => {
                         
                         <Divider sx={{ my: 2 }} />
                         
-                        {quiz.questions?.length > 0 ? (
-                          <Box component="ul" sx={{ pl: 0, listStyleType: 'none' }}>
-                            {quiz.questions.map((question, qIndex) => {
-                              const questionId = question._id || `q-${qIndex}-${quiz._id}`;
-                              const isExpanded = !!expandedQuestions[questionId];
-                              
-                              return (
-                                <Box 
-                                  component="li" 
-                                  key={questionId}
-                                  sx={{
-                                    mb: 3,
-                                    p: 2,
-                                    borderRadius: 2,
-                                    bgcolor: 'background.paper',
-                                    boxShadow: 1,
-                                  }}
-                                >
-                                  <Box sx={{ 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
-                                    justifyContent: 'space-between',
-                                    cursor: 'pointer',
-                                    '&:hover': { bgcolor: 'rgba(0,0,0,0.03)' },
-                                    p: 1,
-                                    borderRadius: 1
-                                  }}
-                                  onClick={() => toggleQuestion(questionId)}
-                                  >
-                                    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-                                      <Typography 
-                                        component="span" 
-                                        sx={{ 
-                                          minWidth: 24, 
-                                          height: 24, 
-                                          borderRadius: '50%', 
-                                          bgcolor: 'primary.main', 
-                                          color: 'white',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          justifyContent: 'center',
-                                          fontWeight: 600,
-                                        }}
+                        <Collapse in={isExpanded}>
+                          {isLoaded ? (
+                            quiz.questions?.length > 0 ? (
+                              <Box component="ul" sx={{ pl: 0, listStyleType: 'none' }}>
+                                {quiz.questions.map((question, qIndex) => {
+                                  const questionId = question._id || `q-${qIndex}-${quiz._id}`;
+                                  const isQuestionExpanded = !!expandedQuestions[questionId];
+                                  
+                                  return (
+                                    <Box 
+                                      component="li" 
+                                      key={questionId}
+                                      sx={{
+                                        mb: 3,
+                                        p: 2,
+                                        borderRadius: 2,
+                                        bgcolor: 'background.paper',
+                                        boxShadow: 1,
+                                      }}
+                                    >
+                                      {/* Question content - same as before */}
+                                      <Box sx={{ 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        justifyContent: 'space-between',
+                                        cursor: 'pointer',
+                                        '&:hover': { bgcolor: 'rgba(0,0,0,0.03)' },
+                                        p: 1,
+                                        borderRadius: 1
+                                      }}
+                                      onClick={() => toggleQuestion(questionId)}
                                       >
-                                        {qIndex + 1}
-                                      </Typography>
-                                      <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                                        {question.questionText || question.text}
-                                      </Typography>
-                                    </Box>
-                                    
-                                    <IconButton size="small">
-                                      {isExpanded ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
-                                    </IconButton>
-                                  </Box>
-                                  
-                                  {question.media && (
-                                    <Box sx={{ my: 2, maxWidth: 500 }}>
-                                      {question.media.type?.startsWith('image/') ? (
-                                        <img 
-                                          src={question.media.url} 
-                                          alt="Question media"
-                                          style={{ maxWidth: '100%', borderRadius: 8 }}
-                                        />
-                                      ) : question.media.type?.startsWith('video/') ? (
-                                        <video 
-                                          controls 
-                                          src={question.media.url}
-                                          style={{ maxWidth: '100%', borderRadius: 8 }}
-                                        >
-                                          Your browser does not support video playback.
-                                        </video>
-                                      ) : null}
-                                    </Box>
-                                  )}
-                                  
-                                  <Collapse in={isExpanded}>
-                                    <Box component="ol" sx={{ mt: 2 }}>
-                                      {(() => {
-                                        // Parse options if they're stored as a string
-                                        let parsedOptions = question.options;
-                                        if (typeof question.options === 'string') {
-                                          try {
-                                            parsedOptions = JSON.parse(question.options);
-                                          } catch (error) {
-                                            console.error('Error parsing options:', error);
-                                            return <Typography color="error">Error displaying options</Typography>;
-                                          }
-                                        }
-                                        
-                                        return Array.isArray(parsedOptions) ? parsedOptions.map((option, oIndex) => (
-                                          <Box 
-                                            component="li" 
-                                            key={oIndex}
-                                            sx={{
-                                              mb: 1,
-                                              p: 1,
-                                              borderRadius: 1,
-                                              bgcolor: option === question.correctAnswer 
-                                                ? 'success.light' 
-                                                : 'grey.100',
-                                              color: option === question.correctAnswer 
-                                                ? 'white' 
-                                                : 'text.primary',
+                                        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                                          <Typography 
+                                            component="span" 
+                                            sx={{ 
+                                              minWidth: 24, 
+                                              height: 24, 
+                                              borderRadius: '50%', 
+                                              bgcolor: 'primary.main', 
+                                              color: 'white',
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              justifyContent: 'center',
+                                              fontWeight: 600,
                                             }}
                                           >
-                                            {option}
-                                            {option === question.correctAnswer && (
-                                              <Chip 
-                                                label="Correct" 
-                                                size="small" 
-                                                color="success"
-                                                sx={{ ml: 1, height: 20 }}
-                                              />
-                                            )}
-                                          </Box>
-                                        )) : (
-                                          <Typography color="error">No options available</Typography>
-                                        );
-                                      })()}
+                                            {qIndex + 1}
+                                          </Typography>
+                                          <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                                            {question.questionText || question.text}
+                                          </Typography>
+                                        </Box>
+                                        
+                                        <IconButton size="small">
+                                          {isQuestionExpanded ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
+                                        </IconButton>
+                                      </Box>
+                                      
+                                      {question.media && (
+                                        <Box sx={{ my: 2, maxWidth: 500 }}>
+                                          {question.media.type?.startsWith('image/') ? (
+                                            <img 
+                                              src={question.media.url} 
+                                              alt="Question media"
+                                              style={{ maxWidth: '100%', borderRadius: 8 }}
+                                            />
+                                          ) : question.media.type?.startsWith('video/') ? (
+                                            <video 
+                                              controls 
+                                              src={question.media.url}
+                                              style={{ maxWidth: '100%', borderRadius: 8 }}
+                                            >
+                                              Your browser does not support video playback.
+                                            </video>
+                                          ) : null}
+                                        </Box>
+                                      )}
+                                      
+                                      <Collapse in={isQuestionExpanded}>
+                                        <Box component="ol" sx={{ mt: 2 }}>
+                                          {(() => {
+                                            // Parse options if they're stored as a string
+                                            let parsedOptions = question.options;
+                                            if (typeof question.options === 'string') {
+                                              try {
+                                                parsedOptions = JSON.parse(question.options);
+                                              } catch (error) {
+                                                console.error('Error parsing options:', error);
+                                                return <Typography color="error">Error displaying options</Typography>;
+                                              }
+                                            }
+                                            
+                                            return Array.isArray(parsedOptions) ? parsedOptions.map((option, oIndex) => (
+                                              <Box 
+                                                component="li" 
+                                                key={oIndex}
+                                                sx={{
+                                                  mb: 1,
+                                                  p: 1,
+                                                  borderRadius: 1,
+                                                  bgcolor: option === question.correctAnswer 
+                                                    ? 'success.light' 
+                                                    : 'grey.100',
+                                                  color: option === question.correctAnswer 
+                                                    ? 'white' 
+                                                    : 'text.primary',
+                                                }}
+                                              >
+                                                {option}
+                                                {option === question.correctAnswer && (
+                                                  <Chip 
+                                                    label="Correct" 
+                                                    size="small" 
+                                                    color="success"
+                                                    sx={{ ml: 1, height: 20 }}
+                                                  />
+                                                )}
+                                              </Box>
+                                            )) : (
+                                              <Typography color="error">No options available</Typography>
+                                            );
+                                          })()}
+                                        </Box>
+                                      </Collapse>
                                     </Box>
-                                  </Collapse>
-                                </Box>
-                              );
-                            })}
-                          </Box>
-                        ) : !detailedQuizzes[quizBasic._id] ? (
+                                  );
+                                })}
+                              </Box>
+                            ) : (
+                              <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
+                                No questions available for this quiz yet.
+                              </Typography>
+                            )
+                          ) : (
+                            <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+                              <CircularProgress size={30} />
+                            </Box>
+                          )}
+                        </Collapse>
+                        
+                        {/* {!isExpanded && (
                           <Box sx={{ textAlign: 'center', py: 2 }}>
                             <Button
                               variant="outlined"
-                              onClick={() => fetchQuizDetails(quizBasic._id)}
-                              startIcon={loadingQuizzes ? <CircularProgress size={20} /> : <Assignment />}
+                              onClick={() => {
+                                if (!isLoaded) {
+                                  fetchQuizDetails(quizBasic._id);
+                                }
+                                setExpandedQuestions(prev => ({
+                                  ...prev,
+                                  [quizBasic._id]: true
+                                }));
+                              }}
+                              startIcon={loadingQuizzes && !isLoaded ? <CircularProgress size={20} /> : <KeyboardArrowDown />}
                             >
-                              Load Quiz Details
                             </Button>
                           </Box>
-                        ) : (
-                          <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
-                            No questions available for this quiz yet.
-                          </Typography>
-                        )}
+                        )} */}
                       </Box>
                     </Paper>
                   );
@@ -834,6 +1056,97 @@ const CourseDetails = () => {
         </Box>
       </Paper>
 
+      {/* Module Modal */}
+      <Modal
+        open={moduleModalOpen}
+        onClose={handleCloseModuleModal}
+        aria-labelledby="module-modal-title"
+      >
+        <Box sx={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: { xs: '90%', sm: 500 },
+          bgcolor: 'background.paper',
+          borderRadius: 2,
+          boxShadow: 24,
+          p: 4,
+          maxHeight: '90vh',
+          overflow: 'auto'
+        }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography id="module-modal-title" variant="h6" component="h2">
+              {moduleToEdit ? 'Edit Module' : 'Create New Module'}
+            </Typography>
+            <IconButton onClick={handleCloseModuleModal} size="small">
+              <Close />
+            </IconButton>
+          </Box>
+          
+          {moduleError && (
+            <Alert severity="error" sx={{ mb: 3 }}>
+              {moduleError}
+            </Alert>
+          )}
+          
+          <form onSubmit={handleModuleSubmit}>
+            <TextField
+              fullWidth
+              margin="normal"
+              label="Module Title"
+              name="title"
+              value={moduleFormData.title}
+              onChange={handleModuleFormChange}
+              required
+              variant="outlined"
+            />
+            
+            <TextField
+              fullWidth
+              margin="normal"
+              label="Description"
+              name="description"
+              value={moduleFormData.description}
+              onChange={handleModuleFormChange}
+              required
+              multiline
+              rows={4}
+              variant="outlined"
+            />
+            
+            <Box sx={{ mt: 3, mb: 3 }}>
+              <Typography variant="subtitle1" gutterBottom>
+                Content File {moduleToEdit && '(leave empty to keep current file)'}
+              </Typography>
+              <input
+                type="file"
+                onChange={handleModuleFileChange}
+                style={{ width: '100%' }}
+              />
+            </Box>
+            
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 2 }}>
+              <Button 
+                onClick={handleCloseModuleModal} 
+                disabled={moduleSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="submit"
+                variant="contained" 
+                color="primary"
+                disabled={moduleSubmitting}
+                startIcon={moduleSubmitting ? <CircularProgress size={20} /> : null}
+              >
+                {moduleSubmitting ? 'Saving...' : moduleToEdit ? 'Save Changes' : 'Create Module'}
+              </Button>
+            </Box>
+          </form>
+        </Box>
+      </Modal>
+
       {/* Delete Quiz Confirmation Dialog */}
       <Dialog
         open={deleteDialogOpen}
@@ -869,6 +1182,145 @@ const CourseDetails = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Content Modal */}
+      <Modal
+        open={contentModalOpen}
+        onClose={handleCloseContentModal}
+        aria-labelledby="content-modal-title"
+      >
+        <Box sx={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: { xs: '90%', sm: '80%', md: '70%' },
+          maxHeight: '90vh',
+          bgcolor: 'background.paper',
+          borderRadius: 2,
+          boxShadow: 24,
+          p: 4,
+          overflow: 'auto'
+        }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+            <Typography id="content-modal-title" variant="h6" component="h2">
+              {selectedContent?.title}
+            </Typography>
+            <IconButton onClick={handleCloseContentModal} size="small">
+              <Close />
+            </IconButton>
+          </Box>
+          
+          {selectedContent && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', width: '100%' }}>
+              {/* Image Content */}
+              {selectedContent.type?.startsWith('image/') && (
+                <img
+                  src={selectedContent.url}
+                  alt={selectedContent.title}
+                  style={{ 
+                    maxWidth: '100%', 
+                    maxHeight: '70vh', 
+                    objectFit: 'contain',
+                    borderRadius: 8
+                  }}
+                />
+              )}
+              
+              {/* Video Content */}
+              {selectedContent.type?.startsWith('video/') && (
+                <video
+                  src={selectedContent.url}
+                  controls
+                  autoPlay
+                  style={{ 
+                    width: '100%',
+                    maxHeight: '70vh',
+                    borderRadius: 8
+                  }}
+                >
+                  Your browser does not support the video tag.
+                </video>
+              )}
+              
+              {/* Audio Content */}
+              {selectedContent.type?.startsWith('audio/') && (
+                <Box sx={{ width: '100%', textAlign: 'center' }}>
+                  <audio
+                    src={selectedContent.url}
+                    controls
+                    autoPlay
+                    style={{ width: '100%', maxWidth: '500px' }}
+                  >
+                    Your browser does not support the audio element.
+                  </audio>
+                </Box>
+              )}
+              
+              {/* PDF Content */}
+              {selectedContent.type === 'application/pdf' && (
+                <iframe
+                  src={`${selectedContent.url}#view=FitH`}
+                  title={selectedContent.title}
+                  style={{ 
+                    width: '100%',
+                    height: '70vh',
+                    border: 'none',
+                    borderRadius: 8
+                  }}
+                />
+              )}
+              
+              {/* Document Content (Office files) */}
+              {['application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+              ].includes(selectedContent.type) && (
+                <Box sx={{ textAlign: 'center', py: 4 }}>
+                  <Typography variant="body1" gutterBottom>
+                    Office documents cannot be previewed directly.
+                  </Typography>
+                  <Button 
+                    variant="contained" 
+                    color="primary"
+                    href={selectedContent.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    sx={{ mt: 2 }}
+                  >
+                    Download Document
+                  </Button>
+                </Box>
+              )}
+              
+              {/* Other File Types */}
+              {!['image/', 'video/', 'audio/', 'application/pdf'].some(t => 
+                t === 'application/pdf' ? selectedContent.type === t : selectedContent.type?.startsWith(t)
+              ) && 
+              !['application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+              ].includes(selectedContent.type) && (
+                <Box sx={{ textAlign: 'center', py: 4 }}>
+                  <Typography variant="body1" gutterBottom>
+                    This file type cannot be previewed directly.
+                  </Typography>
+                  <Button 
+                    variant="contained" 
+                    color="primary"
+                    href={selectedContent.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    sx={{ mt: 2 }}
+                  >
+                    Download/Open File
+                  </Button>
+                </Box>
+              )}
+            </Box>
+          )}
+        </Box>
+      </Modal>
     </Container>
   );
 };

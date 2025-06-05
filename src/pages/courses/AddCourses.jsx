@@ -1,299 +1,227 @@
 import React, { useState } from 'react';
-import Breadcrumb from '../../components/Layout/Breadcrumb';
-import { Star, Upload, Save, X } from 'lucide-react';
+import axios from 'axios';
+import Modules from '../../components/Modules';
 
-const AddCourse = () => {
+const AddCourses = () => {
+  // State for form fields
   const [formData, setFormData] = useState({
     title: '',
     description: '',
-    category: '',
-    tags: '',
-    rating: 0,
-    price: '',
-    duration: '',
-    level: 'Beginner'
-  });
-
-  const [files, setFiles] = useState({
-    video: null,
-    audio: null,
-    pdf: null,
+    status: 'active', // Default value
     thumbnail: null
   });
+  
+  // State for created course and loading status
+  const [createdCourse, setCreatedCourse] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  
+  // API base URL
+  const API_BASE_URL = 'https://nddb-lms.onrender.com';
 
-  const categories = [
-    'Web Development',
-    'Mobile Development',
-    'Data Science',
-    'Machine Learning',
-    'Programming',
-    'Design',
-    'Business',
-    'Marketing',
-    'Other'
-  ];
-
-  const handleInputChange = (e) => {
+  // Handle input changes
+  const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
+    setFormData({
+      ...formData,
       [name]: value
-    }));
+    });
   };
 
-  const handleFileChange = (type, file) => {
-    setFiles(prev => ({
-      ...prev,
-      [type]: file
-    }));
+  // Handle file input for thumbnail
+  const handleFileChange = (e) => {
+    setFormData({
+      ...formData,
+      thumbnail: e.target.files[0]
+    });
   };
 
-  const handleRatingChange = (rating) => {
-    setFormData(prev => ({
-      ...prev,
-      rating
-    }));
-  };
-
-  const handleSubmit = (e) => {
+  // Handle form submission
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log('Form Data:', formData);
-    console.log('Files:', files);
-    alert('Course created successfully!');
+    setIsLoading(true);
+    setError(null);
+    setCreatedCourse(null); // Reset previous course details
+
+    try {
+      // Create form data object to send files
+      const courseData = new FormData();
+      courseData.append('title', formData.title);
+      courseData.append('description', formData.description);
+      courseData.append('status', formData.status);
+      if (formData.thumbnail) {
+        courseData.append('thumbnail', formData.thumbnail);
+      }
+
+      // Send API request
+      const response = await axios.post(
+        `${API_BASE_URL}/api/courses`,
+        courseData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          }
+        }
+      );
+
+      // Set the created course in state - handle both response formats
+      setCreatedCourse(response.data);
+      console.log("Course created successfully:", response.data);
+      
+      // Reset file input
+      const fileInput = document.getElementById('thumbnail');
+      if (fileInput) fileInput.value = '';
+      
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to create course. Please try again.');
+      console.error('Error creating course:', err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const renderStarSelector = () => (
-    <div className="flex items-center space-x-1">
-      {[1, 2, 3, 4, 5].map((star) => (
-        <button
-          key={star}
-          type="button"
-          onClick={() => handleRatingChange(star)}
-          className="focus:outline-none"
-        >
-          <Star
-            className={`h-6 w-6 ${
-              star <= formData.rating 
-                ? 'text-yellow-400 fill-current' 
-                : 'text-gray-300 hover:text-yellow-400'
-            }`}
-          />
-        </button>
-      ))}
-      <span className="ml-2 text-sm text-gray-600">
-        {formData.rating > 0 ? `${formData.rating} star${formData.rating > 1 ? 's' : ''}` : 'No rating'}
-      </span>
-    </div>
-  );
+  // Get the course data from the response structure
+  const courseData = createdCourse?.data || createdCourse;
+  
+  // Construct full thumbnail URL if available
+  const thumbnailUrl = courseData?.thumbnail 
+    ? `${API_BASE_URL}${courseData.thumbnail}`
+    : null;
 
-  const renderFileUpload = (type, label, accept) => (
-    <div className="space-y-2">
-      <label className="block text-sm font-medium text-gray-700">{label}</label>
-      <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
-        <input
-          type="file"
-          accept={accept}
-          onChange={(e) => handleFileChange(type, e.target.files?.[0] || null)}
-          className="hidden"
-          id={`file-${type}`}
-        />
-        <label htmlFor={`file-${type}`} className="cursor-pointer">
-          <Upload className="mx-auto h-12 w-12 text-gray-400" />
-          <div className="mt-2">
-            <span className="text-sm text-gray-600">
-              Click to upload or drag and drop
-            </span>
-          </div>
-        </label>
-        {files[type] && (
-          <div className="mt-2 flex items-center justify-center space-x-2">
-            <span className="text-sm text-green-600">{files[type].name}</span>
-            <button
-              type="button"
-              onClick={() => handleFileChange(type, null)}
-              className="text-red-600 hover:text-red-800"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+  // Get course ID and title for the modules form
+  const courseId = courseData?._id;
+  const courseTitle = courseData?.title;
 
   return (
-    <div>
-      <Breadcrumb />
+    <div className="max-w-4xl mx-auto p-6">
+      <h1 className="text-2xl font-bold mb-6 text-gray-800">Add New Course</h1>
       
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Add New Course</h1>
-        <p className="text-gray-600 mt-2">Create a new course for your learning platform</p>
-      </div>
-
-      <form onSubmit={handleSubmit} className="space-y-8">
-        {/* Basic Information */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-6">Basic Information</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="md:col-span-2">
-              <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
-                Course Title *
-              </label>
-              <input
-                type="text"
-                id="title"
-                name="title"
-                value={formData.title}
-                onChange={handleInputChange}
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Enter course title"
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
-                Description *
-              </label>
-              <textarea
-                id="description"
-                name="description"
-                value={formData.description}
-                onChange={handleInputChange}
-                required
-                rows={4}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Enter course description"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-2">
-                Category *
-              </label>
-              <select
-                id="category"
-                name="category"
-                value={formData.category}
-                onChange={handleInputChange}
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="">Select a category</option>
-                {categories.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label htmlFor="level" className="block text-sm font-medium text-gray-700 mb-2">
-                Difficulty Level
-              </label>
-              <select
-                id="level"
-                name="level"
-                value={formData.level}
-                onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="Beginner">Beginner</option>
-                <option value="Intermediate">Intermediate</option>
-                <option value="Advanced">Advanced</option>
-              </select>
-            </div>
-
-            <div>
-              <label htmlFor="price" className="block text-sm font-medium text-gray-700 mb-2">
-                Price ($)
-              </label>
-              <input
-                type="number"
-                id="price"
-                name="price"
-                value={formData.price}
-                onChange={handleInputChange}
-                min="0"
-                step="0.01"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="0.00"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="duration" className="block text-sm font-medium text-gray-700 mb-2">
-                Duration (hours)
-              </label>
-              <input
-                type="number"
-                id="duration"
-                name="duration"
-                value={formData.duration}
-                onChange={handleInputChange}
-                min="0"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Course duration in hours"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="tags" className="block text-sm font-medium text-gray-700 mb-2">
-                Tags
-              </label>
-              <input
-                type="text"
-                id="tags"
-                name="tags"
-                value={formData.tags}
-                onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Enter tags separated by commas"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Initial Rating
-              </label>
-              {renderStarSelector()}
-            </div>
-          </div>
+      <form onSubmit={handleSubmit} className="bg-white shadow-md rounded-lg p-6 mb-6">
+        {/* Form fields remain the same */}
+        <div className="mb-4">
+          <label htmlFor="title" className="block text-gray-700 text-sm font-bold mb-2">
+            Course Title:
+          </label>
+          <input
+            type="text"
+            id="title"
+            name="title"
+            value={formData.title}
+            onChange={handleChange}
+            required
+            placeholder="Enter course title"
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
         </div>
 
-        {/* Content Upload */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-6">Course Content</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {renderFileUpload('thumbnail', 'Course Thumbnail', 'image/*')}
-            {renderFileUpload('video', 'Video Content', 'video/*')}
-            {renderFileUpload('audio', 'Audio Content', 'audio/*')}
-            {renderFileUpload('pdf', 'PDF Materials', '.pdf')}
-          </div>
+        <div className="mb-4">
+          <label htmlFor="description" className="block text-gray-700 text-sm font-bold mb-2">
+            Description:
+          </label>
+          <textarea
+            id="description"
+            name="description"
+            value={formData.description}
+            onChange={handleChange}
+            required
+            placeholder="Enter course description"
+            rows="4"
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
         </div>
 
-        {/* Submit Buttons */}
-        <div className="flex justify-end space-x-4">
-          <button
-            type="button"
-            className="px-6 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
+        <div className="mb-4">
+          <label htmlFor="status" className="block text-gray-700 text-sm font-bold mb-2">
+            Status:
+          </label>
+          <select
+            id="status"
+            name="status"
+            value={formData.status}
+            onChange={handleChange}
+            required
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            Save as Draft
-          </button>
-          <button
-            type="submit"
-            className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center space-x-2"
-          >
-            <Save className="h-4 w-4" />
-            <span>Publish Course</span>
-          </button>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="draft">Draft</option>
+          </select>
         </div>
+
+        <div className="mb-6">
+          <label htmlFor="thumbnail" className="block text-gray-700 text-sm font-bold mb-2">
+            Thumbnail:
+          </label>
+          <input
+            type="file"
+            id="thumbnail"
+            name="thumbnail"
+            onChange={handleFileChange}
+            accept="image/*"
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+
+        <button 
+          type="submit" 
+          className={`w-full bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition
+            ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+          disabled={isLoading}
+        >
+          {isLoading ? 'Creating...' : 'Create Course'}
+        </button>
       </form>
+
+      {error && (
+        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded" role="alert">
+          <p>{error}</p>
+        </div>
+      )}
+
+      {createdCourse && (
+        <>
+          <div className="bg-green-50 border-l-4 border-green-500 p-6 rounded-lg shadow-md mb-6">
+            <h2 className="text-xl font-bold text-green-700 mb-4">
+              {createdCourse.message || "Course Created Successfully!"}
+            </h2>
+            <div className="bg-white p-4 rounded-md border border-gray-200">
+              <p className="mb-2"><span className="font-bold">Status:</span> {createdCourse.status}</p>
+              {courseData && (
+                <>
+                  <p className="mb-2"><span className="font-bold">Title:</span> {courseData.title}</p>
+                  <p className="mb-2"><span className="font-bold">Description:</span> {courseData.description}</p>
+                  <p className="mb-2"><span className="font-bold">Course Status:</span> {courseData.status}</p>
+                  {courseData.createdAt && (
+                    <p className="mb-2"><span className="font-bold">Created At:</span> {new Date(courseData.createdAt).toLocaleString()}</p>
+                  )}
+                  
+                  {thumbnailUrl && (
+                    <div className="mt-4">
+                      <p className="font-bold mb-2">Thumbnail:</p>
+                      <img 
+                        src={thumbnailUrl}
+                        alt="Course thumbnail" 
+                        className="max-w-xs rounded-md shadow-sm border border-gray-200" 
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+          
+          {/* Module form component - only shown after course creation */}
+          {courseId && (
+            <Modules 
+              courseId={courseId} 
+              courseName={courseTitle} 
+              apiBaseUrl={API_BASE_URL}
+            />
+          )}
+        </>
+      )}
     </div>
   );
 };
 
-export default AddCourse;
+export default AddCourses;
